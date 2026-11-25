@@ -10,3 +10,4 @@
 buildmodels.sh
 
 *.db
+uv.lock
