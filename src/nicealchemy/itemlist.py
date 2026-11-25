@@ -11,10 +11,10 @@ from sqlalchemy_utils import get_class_by_table
 
 from pprint import pprint
 
-import nice_alchemy.context as context
+import nicealchemy.context as context
 
-from nice_alchemy.fields import ChipToggle, Field, Relation, Value, FilterableField, RelationPaired, RelationSingle, RelationList
-from nice_alchemy.fields import get_sessionmaker, get_pk_names, get_class_by_column, create_filter_stmt
+from nicealchemy.fields import ChipToggle, Field, Relation, Value, FilterableField, RelationPaired, RelationSingle, RelationList
+from nicealchemy.fields import get_sessionmaker, get_pk_names, get_class_by_column, create_filter_stmt
 
 
 class ItemList(ui.card):
@@ -28,7 +28,12 @@ class ItemList(ui.card):
         self.filter_stmt = filter
         self.parent = parent_row
 
-        self.db = get_sessionmaker()
+        self.sessionmkr = get_sessionmaker()
+        
+        if not self.session:
+            self.session = self.sessionmkr()
+            self.session.expire_on_commit = False
+            print(f'make session{self.listName}')
 
         if 'refresh_model_list' not in app.storage.client:
             app.storage.client['refresh_model_list'] = {}
@@ -83,7 +88,7 @@ class ItemList(ui.card):
     def create_filter_ui(self):
         @ui.refreshable
         def create_fields():
-            with self.db() as session:
+            with self.session as session:
                 self.process_input_fields(self.filter_elements, self.filter_row, self.filter_row,
                                           self.field_list.fields, session)
 
@@ -130,7 +135,7 @@ class ItemList(ui.card):
 
             if isinstance(field, RelationPaired):
                 self.process_input_fields(element_row, root, getattr(data_row, field.rel_attr), field.fields,
-                                          self.session)
+                                          session)
                 self.addRefreshItem(field.model, self.createList)
 
             elif isinstance(field, RelationSingle):
@@ -153,30 +158,12 @@ class ItemList(ui.card):
                                      event_handlers=[('keydown.enter', lambda i=root: self.saveItem(i)),
                                                      ('update:modelValue', modify_row)])
 
-                #
-                # if isinstance(field, Value):
-                #     field.create_row_editor_element(row_elements,
-                #                          data_row,
-                #                          event_handlers=[('keydown.enter', lambda i=root: self.saveItem(i)),
-                #                                          ('update:modelValue', modify_row)])
-
                 if isinstance(field, RelationPaired):
-                    # print(data_row)
                     att_item = getattr(data_row, field.rel_attr)
                     if att_item:
                         process_row_fields(root, att_item, field.fields, list_row_container)
 
-                # elif isinstance(field, RelationSingle):
-                #     field.create_row_editor_element(row_elements,
-                #                          data_row,
-                #                          self.session,
-                #                          event_handlers=[('update:modelValue', modify_row)])
-                #
-                # elif isinstance(field, RelationList):
-                #     field.create_row_editor_element(row_elements, data_row, self.session, parent_element=list_row_container)
 
-        if not self.session:
-            self.session = self.db()
         with self.session:
             self.addRefreshItem(self.model, self.createList)
             stmt = self.filter_stmt
@@ -187,7 +174,7 @@ class ItemList(ui.card):
             items = self.session.scalars(stmt).all()
             self.session.commit()
             with ui.card():
-                ui.label('Create New')
+                ui.label(f'Create New {self.listName}')
                 self.create_item_ui_row = ui.row().classes('center')
                 with self.create_item_ui_row:
 
@@ -208,14 +195,14 @@ class ItemList(ui.card):
                         list_row_container.save_btn = ui.button(icon='save',
                                                                 on_click=lambda: self.save_modified()).props('flat')
                         list_row_container.save_btn.disable()
-            # self.session.commit()
 
     def createItem(self):
-        with self.db() as session:
-            session.expire_on_commit = False
+        with self.session as session:
 
             def process_field(field, data_row):
+                print(field.col_prop)
                 if isinstance(field, RelationPaired):
+                    print(field.rel_attr)
                     att_item = getattr(data_row, field.rel_attr)
 
                     join_item = process_fields(field.fields, att_item)
@@ -234,22 +221,20 @@ class ItemList(ui.card):
         self.refresh_models()
 
     def deleteItem(self, data_row) -> None:
-        with self.db() as session:
+        with self.session as session:
             session.delete(data_row)
             session.commit()
 
         self.refresh_models()
 
     def saveItem(self, data_row):
-        with self.db() as session:
-            session.expire_on_commit = False
+        with self.session as session:
             session.add(data_row)
             session.commit()
         self.refresh_models()
 
     def save_modified(self):
-        with self.db() as session:
-            session.expire_on_commit = False
+        with self.session as session:
             for key, row in self.modified.items():
                 data_row, btn = row
                 session.add(data_row)

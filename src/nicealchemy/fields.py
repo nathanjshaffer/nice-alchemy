@@ -10,8 +10,8 @@ from sqlalchemy import select, inspect, bindparam
 from sqlalchemy.orm.attributes import InstrumentedAttribute
 import sqlalchemy
 
-import nice_alchemy.context as context
-import nice_alchemy
+import nicealchemy.context as context
+import nicealchemy
 
 model_base = None
 sessionmaker = None
@@ -40,11 +40,12 @@ InstrumentedAttribute.set_handler = set_handler
 
 
 def make_bindable(instance, attr, attr_type=None, on_change: Optional[Callable[..., Any]] = None):
+    # print(binding.__dir__)
     binder = getattr(instance.__class__, attr)
     binder.set_handler(on_change)
     temp = getattr(instance, attr)
 
-    binding.bindable_properties[(id(instance), attr)] = instance
+    # binding.bindable_properties[(id(instance), attr)] = instance
     setattr(instance, attr, temp)
 
 
@@ -53,9 +54,9 @@ def set_model_base(base):
     model_base = base
 
 
-def set_sessionmaker(db):
+def set_sessionmaker(sessionmkr):
     global sessionmaker
-    sessionmaker = db
+    sessionmaker = sessionmkr
 
 
 def get_sessionmaker():
@@ -123,7 +124,7 @@ class ChipToggle(ui.chip):
 
 
 @dataclass
-class Field(context.FieldContextVisitor):
+class Field(binding.BindableProperty, context.FieldContextVisitor):
     _: KW_ONLY
     event_handlers: list = None
     backward: callable = None
@@ -132,18 +133,20 @@ class Field(context.FieldContextVisitor):
 
     def __post_init__(self):
         context.FieldContextVisitor.__init__(self)
-        bind_values = {}
+        Field.bind_values = {}
 
     def set_source_field_value(self, value):
         Field.bind_values[self.col_prop] = value
 
     def get_source_field_value(self, id):
+        print(id)
         if id in Field.bind_values.keys():
             return Field.bind_values[id]
         else:
             return None
 
     def create_bindparam(self):
+        # print(self.col_prop)
         param = bindparam(key='id', callable_=lambda id=self.col_prop: self.get_source_field_value(id))
         return param
 
@@ -194,6 +197,7 @@ class Static(Field):
 
         return element
 
+
 @dataclass
 class Value(Relation):
 
@@ -226,6 +230,28 @@ class Value(Relation):
         return element
 
 
+@dataclass
+class Select(Value):
+  
+    _: KW_ONLY
+    type: object = ui.select
+    options: list = None
+    
+    def create_row_editor_element(self, element_row, data_row, event_handlers=None, **kwargs):
+        element = ui.select(label=self.label, with_input=False, options=self.options)
+        element.element_row = element_row
+        element.data_row = data_row
+
+        make_bindable(data_row, self.col_prop, attr_type=type(element.value))
+        # 
+        element.bind_value(data_row, self.col_prop, **self.create_bindable_callbacks(element_row, data_row))
+        
+        self.add_handlers(element, event_handlers)
+        self.add_handlers(element, self.event_handlers)
+        
+        element_row[self.col_prop] = element
+        return element
+
 def update_list_options(target_field, element, session, value=None):
     if hasattr(target_field, 'source'):
         target_field.source.set_source_field_value(value)
@@ -234,6 +260,7 @@ def update_list_options(target_field, element, session, value=None):
         stmt = select(target_field.model).from_statement(target_field.filter)
     else:
         stmt = select(target_field.model)
+    print(stmt)
     with session.no_autoflush:
         option_items = session.scalars(stmt).all()
     options = {}
@@ -244,6 +271,7 @@ def update_list_options(target_field, element, session, value=None):
         option_data[getattr(item, get_pk_names(item)[0])] = item
     element.set_options(options)
     element.option_data = option_data
+    
     return options, option_data
 
 
@@ -256,14 +284,19 @@ class FilterableField(Relation):
     filter: object = None
 
     def __post_init__(self):
+        
         Relation.__post_init__(self)
-        if not filter:
+        
+        if self.filter is None:
             self.filter = select(self.model)
 
     def bind_source(self, source):
         param = source.create_bindparam()
         self.source = source
         source.target = self
+        print(f'param: {param}')
+        print(param.__dict__)
+        print(param.__class__)
         return param
 
     def set_filterable_options(self, element, element_row, session):
@@ -332,12 +365,12 @@ class RelationSingle(FilterableField):  # m:1 relationship
         make_bindable(data_row, self.col_prop, attr_type=type(element.value))
 
         def change(event):
-            if event.value:
+            if event.value and self.rel_attr is not None:
                 setattr(data_row, self.rel_attr, element.option_data[event.value])
 
         element.on_value_change(change)
         if self.autofill:
-            element.props('autocomplete="new-password"')
+            element.props('autocomplete="on"')
 
         self.set_filterable_options(element, element_row, session)
         self.add_handlers(element, event_handlers)
@@ -375,11 +408,11 @@ class RelationList(FilterableField, context.FieldList):  # m:m relationship
                         stmt = select(self.model).from_statement(stmt)
                     else:
                         stmt = select(self.model).join.where(filter)
-                    nice_alchemy.ItemList(self.label,
+                    nicealchemy.ItemList(self.label,
                                           self.model,
                                           field_list=self,
                                           session=session,
-                                          filter_stmt=stmt,
+                                          filter=stmt,
                                           parent_row=data_item).classes('on-right')
 
     def create(self, element_row, data_row, session=None, backref=None, parent_element=None, **kwargs):

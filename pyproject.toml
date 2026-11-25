@@ -3,5 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "nice-alchemy"
+name = "nicealchemy"
 version = "0.1"
+authors = [{ name = "Nathan Shaffer", email = "nathanjshaffer@gmail.com" }]
+license = "MIT"

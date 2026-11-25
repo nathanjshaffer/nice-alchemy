@@ -6,10 +6,10 @@ from sqlalchemy_utils import get_class_by_table
 
 from pprint import pprint
 
-import nice_alchemy.context as context
+import nicealchemy.context as context
 
-from nice_alchemy.fields import ChipToggle, Field, Relation, Value, FilterableField, RelationPaired, RelationSingle, RelationList
-from nice_alchemy.fields import get_sessionmaker, get_pk_names, get_class_by_column
+from nicealchemy.fields import ChipToggle, Field, Relation, Value, FilterableField, RelationPaired, RelationSingle, RelationList
+from nicealchemy.fields import get_sessionmaker, get_pk_names, get_class_by_column
 
 
 class Item(ui.card):

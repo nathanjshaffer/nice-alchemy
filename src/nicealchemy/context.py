@@ -20,6 +20,5 @@ class FieldList():
 
 class FieldContextVisitor():
     def __init__(self):
-        # print(field_context.get())
         if field_context.get():
             field_context.get().fields.append(self)
